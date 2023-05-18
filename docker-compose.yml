@@ -1,0 +1,64 @@
+version: 3.9
+
+networks:
+    # Réseau interne
+    t2_proxy:
+        name: t2_proxy
+	driver: bridge
+	ipam:
+	    config:
+		- subnet: 192.168.90.0/24
+	# Réseau disponible par internet
+	default:
+	    driver: bridge
+	# Réseau pour les containers demandant des
+	# accès spéciaux (Traefik)
+	socket_proxy:
+	    name: socket_proxy
+	    driver: bridge
+	    ipam:
+	        config:
+		    - subnet: 192.168.91.0/24
+
+x-common-keys-core: &common-keys-core
+  networks:
+    - t2_proxy
+  security_opt:
+    - no-new-privileges:true
+  restart: always
+
+services:
+  traefik:
+    <<: *common-keys-core
+    container_name: traefik
+    image: traefik:2.10.1
+    networks:
+      t2_proxy:
+        ipv4_address: 192.168.90.254
+      socket_proxy:
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+    volumes:
+      - $DOCKERDIR/appdata/traefik2/rules/cloudserver:/rules 
+      # cert location - you must create this emtpy file and change permissions to 600
+      - $DOCKERDIR/appdata/traefik2/acme/acme.json:/acme.json 
+    environment:
+      - TZ=$TZ
+      - CF_API_EMAIL_FILE=/run/secrets/cf_email
+      - CF_API_KEY_FILE=/run/secrets/cf_api_key
+      # HTPASSWD_FILE can be whatever as it is not used/called anywhere.
+      - HTPASSWD_FILE=/run/secrets/htpasswd 
+      # Passing the domain name to traefik container to be able to use the variable in rules. 
+      - DOMAINNAME_CLOUD_SERVER 
+    secrets:
+      - cf_email
+      - cf_api_key
+      - htpasswd
+
